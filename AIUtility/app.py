@@ -12,7 +12,6 @@ from modules.blueprint import show_blueprint
 from modules.dashboard import show_dashboard
 from modules.report import show_report
 from modules.ai_chat import show_ai_chat
-
 from utils.animations import UIEffects
 
 
@@ -66,7 +65,7 @@ st.sidebar.image(
 
 UIEffects.hero(
     "☀ SolarTwin AI",
-    "Enterprise AI Solar Planning Platform"
+    "Intelligent Rooftop Solar Planning Platform"
 )
 
 # --------------------------------------------------------
