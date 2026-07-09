@@ -33,9 +33,12 @@ class SolarService:
 
             "aspect": 0,
 
-            "outputformat": "json"
+            "outputformat": "json",
+
+            "monthly": 1
 
         }
+        
 
         try:
 
@@ -175,19 +178,10 @@ class SolarService:
 
         )
 
-        monthly = outputs.get(
+        monthly = outputs.get("monthly", {}).get("fixed", [])
 
-            "monthly",
-
-            {}
-
-        ).get(
-
-            "fixed",
-
-            []
-
-        )
+        if not monthly:
+            print("Monthly data not returned from PVGIS.")
 
         result = []
 

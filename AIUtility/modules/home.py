@@ -3,18 +3,16 @@ import streamlit as st
 
 def show_home():
 
-    st.title("☀ SolarTwin AI")
+    #st.title("OVERVIEW")
 
-    st.subheader("Enterprise AI Powered Rooftop Solar Planning Platform")
-
-    st.write("---")
+    #st.write("---")    
 
     project = st.session_state.get("project", {})
 
     blueprint = project.get("blueprint", {})
     generation = project.get("generation", {})
     roi = project.get("roi", {})
-
+    '''
     panels = blueprint.get("count", 0)
     capacity = blueprint.get("capacity", 0)
     energy = generation.get("annual_energy", 0)
@@ -41,9 +39,7 @@ def show_home():
         "Payback",
         f"{payback} Years"
     )
-
-    st.divider()
-
+    '''
     st.info(
         """
 ### 🚀 Welcome to SolarTwin AI

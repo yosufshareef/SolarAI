@@ -22,7 +22,9 @@ def show_dashboard():
         st.warning("Generate Blueprint first.")
         return
 
-    if "location" not in project:
+    location = project.get("location", {})
+
+    if not location:
         st.warning("Search location first.")
         return
 

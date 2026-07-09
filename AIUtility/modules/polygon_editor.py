@@ -184,7 +184,7 @@ def show_polygon_editor():
         key=f"roof_polygon_canvas_{st.session_state.canvas_id}"
 
     )
-    st.write("Canvas JSON:", canvas.json_data)
+    #st.write("Canvas JSON:", canvas.json_data)
 
     points = []
 
@@ -393,7 +393,7 @@ def show_polygon_editor():
                     "Now open 📐 Blueprint from the sidebar."
 
                 )
-
+    '''
     # ---------------------------------------------------------
     # Debug (Temporary)
     # ---------------------------------------------------------
@@ -417,7 +417,7 @@ def show_polygon_editor():
             st.write("Canvas not initialized.")
 
     # ---------------------------------------------------------
-
+    '''
     st.divider()
 
     st.success("✔ Roof polygon editor ready.")

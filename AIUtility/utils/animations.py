@@ -229,7 +229,7 @@ class UIEffects:
 
         <small>
 
-        SolarTwin AI • LTTS Global Hackathon
+        SolarTwin AI • IntelliAutomators Solution • LTTS
 
         </small>
 
