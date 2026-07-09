@@ -1,1 +1,1 @@
-AIUtility\venv
+venv/
