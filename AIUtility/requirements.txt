@@ -1,0 +1,27 @@
+streamlit
+pandas
+numpy
+opencv-python
+Pillow
+plotly
+ultralytics
+segment-anything
+torch 
+torchvision
+shapely
+scikit-image
+supervision
+streamlit-plotly-events
+streamlit-drawable-canvas
+ultralytics
+streamlit-folium
+geopy
+folium
+geocoder
+leafmap
+pip install streamlit-image-coordinates
+requests
+reportlab
+kaleido
+streamlit-webrtc
+av
