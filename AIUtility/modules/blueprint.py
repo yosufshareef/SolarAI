@@ -154,7 +154,7 @@ def show_blueprint():
 
         fig,
 
-        use_container_width=True
+        use_column_width=True
 
     )
 

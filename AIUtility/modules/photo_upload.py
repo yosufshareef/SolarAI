@@ -11,7 +11,6 @@ Author : SolarTwin AI
 """
 
 from __future__ import annotations
-
 import streamlit as st
 import pandas as pd
 from ai.roof_detector import RoofDetector
@@ -108,7 +107,7 @@ def preview_image(cv_image):
 
         pil,
 
-        use_container_width=True
+        use_column_width=True
 
     )
 
@@ -247,8 +246,6 @@ def show_photo_upload():
 
         df,
 
-        use_container_width=True,
-
         hide_index=True
 
     )
@@ -328,7 +325,6 @@ The next milestone will automatically:
             "🚀 Run AI Detection",
 
             use_container_width=True
-
         ):
 
             image = valid_images[0]["image"]
@@ -347,7 +343,7 @@ The next milestone will automatically:
 
                 caption="Detected Roof",
 
-                use_container_width=True
+                use_column_width=True
 
             )
 
@@ -391,25 +387,23 @@ The next milestone will automatically:
 
             with st.spinner("Detecting obstacles..."):
 
-                annotated, detections = ObjectDetector().detect(image)
+                object_result = ObjectDetector().detect(image)
 
+                annotated = object_result.overlay
+
+                detections = object_result.detections
             st.image(
-
                 cv2_to_pil(annotated),
 
                 caption="Detected Obstacles",
 
-                use_container_width=True
+                use_column_width=True
 
             )
 
             st.session_state.project["obstacles"] = detections
 
-            st.success(
-
-                f"{len(detections)} obstacle(s) detected."
-
-            )
+            st.success(object_result.message)
 
             st.info(
 

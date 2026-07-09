@@ -136,38 +136,19 @@ def show_map_search():
     )
 
     map_data = st_folium(
-
         fmap,
-
         width=1200,
-
         height=700,
-
-        returned_objects=[
-
-            "all_drawings",
-
-            "last_clicked"
-
-        ],
-
         key="satellite_map"
-
     )
 
     if not map_data:
 
         return
 
-    drawings = map_data.get(
+    drawings = map_data.get("all_drawings") or []
 
-        "all_drawings",
-
-        []
-
-    )
-
-    if len(drawings) == 0:
+    if not drawings:
 
         st.info(
 

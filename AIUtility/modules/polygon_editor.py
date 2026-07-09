@@ -17,6 +17,56 @@ from streamlit_drawable_canvas import st_canvas
 from services.geometry_engine import GeometryEngine
 from ai.roof_detector import RoofDetector
 
+def extract_polygon_points(shape):
+
+    points = []
+
+    # -----------------------------------------
+    # Fabric Path (your version)
+    # -----------------------------------------
+
+    if shape.get("type") == "path":
+
+        for cmd in shape["path"]:
+
+            if cmd[0] in ("M", "L"):
+
+                x = int(cmd[1])
+                y = int(cmd[2])
+
+                if (x, y) not in points:
+                    points.append((x, y))
+
+        return points
+
+    # -----------------------------------------
+    # Polygon (newer versions)
+    # -----------------------------------------
+
+    if "points" in shape:
+
+        left = shape.get("left", 0)
+        top = shape.get("top", 0)
+
+        for p in shape["points"]:
+
+            points.append(
+
+                (
+
+                    int(left + p["x"]),
+                    int(top + p["y"])
+
+                )
+
+            )
+
+        return points
+
+    return points
+
+
+# ---------------------------------------------------------
 
 def show_polygon_editor():
 
@@ -30,13 +80,7 @@ def show_polygon_editor():
 
     project = st.session_state.project
 
-    if "uploaded_images" not in project:
-
-        st.warning("Upload an image first.")
-
-        return
-
-    if len(project["uploaded_images"]) == 0:
+    if "uploaded_images" not in project or len(project["uploaded_images"]) == 0:
 
         st.warning("Upload an image first.")
 
@@ -44,15 +88,19 @@ def show_polygon_editor():
 
     image = project["uploaded_images"][0]["image"]
 
+    # -------------------------------------------------
+    # AI Roof Detection Preview
+    # -------------------------------------------------
+
     st.subheader("AI Roof Detection")
 
     detector = RoofDetector()
 
     result = detector.detect(image)
 
-    col1, col2 = st.columns(2)
+    c1, c2 = st.columns(2)
 
-    with col1:
+    with c1:
 
         st.image(
 
@@ -64,13 +112,13 @@ def show_polygon_editor():
 
             ),
 
-            use_container_width=True,
+            use_column_width=True,
 
             caption="Original"
 
         )
 
-    with col2:
+    with c2:
 
         st.image(
 
@@ -82,7 +130,7 @@ def show_polygon_editor():
 
             ),
 
-            use_container_width=True,
+            use_column_width=True,
 
             caption=f"AI Suggestion ({result.confidence}%)"
 
@@ -98,6 +146,10 @@ def show_polygon_editor():
 
     st.divider()
 
+    # -------------------------------------------------
+    # Polygon Canvas
+    # -------------------------------------------------
+
     st.subheader("Edit Roof Polygon")
 
     rgb = cv2.cvtColor(
@@ -109,7 +161,8 @@ def show_polygon_editor():
     )
 
     pil = Image.fromarray(rgb)
-
+    if "canvas_id" not in st.session_state:
+        st.session_state.canvas_id = 0
     canvas = st_canvas(
 
         background_image=pil,
@@ -122,130 +175,114 @@ def show_polygon_editor():
 
         fill_color="rgba(0,255,0,0.25)",
 
-        update_streamlit=True,
+        update_streamlit=False,
 
         height=pil.height,
 
         width=pil.width,
 
-        key="roof_polygon_canvas"
+        key=f"roof_polygon_canvas_{st.session_state.canvas_id}"
 
     )
-
-    if canvas.json_data is None:
-
-        return
-
-    objects = canvas.json_data.get(
-
-        "objects",
-
-        []
-
-    )
-
-    if len(objects) == 0:
-
-        return
-
-    polygon = objects[-1]
-
-    if polygon["type"] != "polygon":
-
-        return
+    st.write("Canvas JSON:", canvas.json_data)
 
     points = []
 
-    for item in polygon["path"]:
+    roof_info = None
 
-        if item[0] in ["M", "L"]:
+    if canvas.json_data:
 
-            points.append(
+        objects = canvas.json_data.get(
 
-                (
+            "objects",
 
-                    int(item[1]),
-
-                    int(item[2])
-
-                )
-
-            )
-
-    if len(points) < 3:
-
-        st.warning(
-
-            "Polygon requires at least 3 points."
+            []
 
         )
 
-        return
+        if objects:
 
-    geometry = GeometryEngine()
+            # Find the PATH object instead of assuming polygon
+            polygon = None
 
-    roof_info = geometry.roof_summary(points)
+            for obj in reversed(objects):
 
-    project["roof_polygon"] = points
+                if obj.get("type") == "path":
 
-    project["roof_info"] = roof_info
+                    polygon = obj
+                    break
 
-    st.success("Roof polygon updated.")
+            if polygon is not None:
 
-    c1, c2, c3, c4 = st.columns(4)
+                points = extract_polygon_points(
+                    polygon
+                )
 
-    c1.metric(
+    if len(points) >= 3:
 
-        "Area",
+        geometry = GeometryEngine()
 
-        f'{roof_info["area_m2"]:.2f} m²'
+        roof_info = geometry.roof_summary(
 
-    )
+            points
 
-    c2.metric(
+        )
+        st.session_state["edited_polygon"] = points
+        project["roof_polygon"] = points
+        project["roof_info"] = roof_info
 
-        "Perimeter",
+        st.success("Roof polygon updated.")
 
-        f'{roof_info["perimeter_m"]:.2f} m'
+    else:
 
-    )
+        st.info(
 
-    c3.metric(
+            "Draw and close a polygon around the roof. Once completed, the measurements and actions will appear below."
 
-        "Width",
+        )
+        # ---------------------------------------------------------
+    # Roof Statistics
+    # ---------------------------------------------------------
 
-        f'{roof_info["width_m"]:.2f} m'
+    if roof_info is not None:
 
-    )
+        st.divider()
 
-    c4.metric(
+        c1, c2, c3, c4 = st.columns(4)
 
-        "Height",
+        c1.metric(
+            "Area",
+            f'{roof_info["area_m2"]:.2f} m²'
+        )
 
-        f'{roof_info["height_m"]:.2f} m'
+        c2.metric(
+            "Perimeter",
+            f'{roof_info["perimeter_m"]:.2f} m'
+        )
 
-    )
+        c3.metric(
+            "Width",
+            f'{roof_info["width_m"]:.2f} m'
+        )
 
-    st.json(roof_info)
-
-    st.divider()
+        c4.metric(
+            "Height",
+            f'{roof_info["height_m"]:.2f} m'
+        )
 
     # ---------------------------------------------------------
     # Obstacle Detection
     # ---------------------------------------------------------
 
+    st.divider()
+
     st.subheader("🚧 Rooftop Obstacles")
 
     from ai.object_detector import ObjectDetector
 
-    if st.button(
-        "Detect Obstacles",
-        use_container_width=True
-    ):
+    if st.button("Detect Obstacles"):
 
-        with st.spinner(
-            "Running AI object detection..."
-        ):
+        with st.spinner("Running AI object detection..."):
 
             detector = ObjectDetector()
 
@@ -253,117 +290,95 @@ def show_polygon_editor():
 
             project["obstacles"] = result.detections
 
-            st.image(
+        st.image(
 
-                cv2.cvtColor(
+            cv2.cvtColor(
 
-                    result.overlay,
+                result.overlay,
 
-                    cv2.COLOR_BGR2RGB
+                cv2.COLOR_BGR2RGB
 
-                ),
+            ),
 
-                use_container_width=True,
+            caption="Detected Obstacles",
 
-                caption="Detected Obstacles"
+            use_column_width=True
 
-            )
+        )
 
-            if result.success:
+        if result.success:
 
-                st.success(result.message)
+            st.success(result.message)
 
-                if len(result.detections):
+            if result.detections:
 
-                    st.dataframe(
+                st.dataframe(
 
-                        result.detections,
+                    result.detections,
 
-                        use_container_width=True,
-
-                        hide_index=True
-
-                    )
-
-            else:
-
-                st.info(
-
-                    "No significant rooftop obstacles detected."
+                    hide_index=True
 
                 )
 
-    st.divider()
+        else:
+
+            st.info("No rooftop obstacles detected.")
 
     # ---------------------------------------------------------
     # Polygon Preview
     # ---------------------------------------------------------
 
+    st.divider()
+
     with st.expander("Polygon Coordinates"):
 
-        st.write(points)
+        if points:
 
-    st.divider()
+            st.write(points)
+
+        else:
+
+            st.info("No polygon drawn yet.")
 
     # ---------------------------------------------------------
     # Action Buttons
     # ---------------------------------------------------------
 
+    st.divider()
+
     c1, c2, c3 = st.columns(3)
 
     with c1:
 
-        if st.button(
+        if st.button("💾 Save Polygon"):
 
-            "💾 Save Polygon",
-
-            use_container_width=True
-
-        ):
-
-            project["roof_polygon"] = points
-
-            project["roof_info"] = roof_info
-
-            st.success(
-
-                "Polygon saved successfully."
-
-            )
+            saved_points = st.session_state.get("edited_polygon", [])
+            if len(saved_points) < 3:
+                st.error("Please draw a polygon first.")
+            else:
+                project["roof_polygon"] = saved_points
+                project["roof_info"] = roof_info
+                st.success("Polygon saved successfully.")
 
     with c2:
 
-        if st.button(
+        if st.button("🗑 Clear Polygon"):
 
-            "🗑 Clear Polygon",
+            st.session_state.canvas_id += 1
 
-            use_container_width=True
+            project["roof_polygon"] = []
 
-        ):
-
-            if "roof_polygon_canvas" in st.session_state:
-
-                del st.session_state["roof_polygon_canvas"]
+            project["roof_info"] = {}
 
             st.rerun()
 
     with c3:
 
-        if st.button(
-
-            "➡ Continue to Blueprint",
-
-            use_container_width=True
-
-        ):
+        if st.button("➡ Continue to Blueprint"):
 
             if len(points) < 3:
 
-                st.error(
-
-                    "Please draw a valid roof polygon."
-
-                )
+                st.error("Please draw a valid roof polygon.")
 
             else:
 
@@ -371,18 +386,38 @@ def show_polygon_editor():
 
                 project["roof_info"] = roof_info
 
-                st.success(
-
-                    "Polygon finalized."
-
-                )
+                st.success("Polygon finalized.")
 
                 st.info(
 
-                    "Open the '📐 Blueprint' page from the sidebar."
+                    "Now open 📐 Blueprint from the sidebar."
 
                 )
 
+    # ---------------------------------------------------------
+    # Debug (Temporary)
+    # ---------------------------------------------------------
+
     st.divider()
 
-    st.success("✔ Roof polygon editing completed.")
+    with st.expander("Developer Debug"):
+
+        st.write("Stored Roof Polygon:")
+
+        st.write(project.get("roof_polygon", []))
+
+        st.write("Canvas JSON:")
+
+        if canvas.json_data:
+
+            st.json(canvas.json_data)
+
+        else:
+
+            st.write("Canvas not initialized.")
+
+    # ---------------------------------------------------------
+
+    st.divider()
+
+    st.success("✔ Roof polygon editor ready.")

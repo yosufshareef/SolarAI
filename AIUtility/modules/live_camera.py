@@ -83,8 +83,6 @@ def show_live_camera():
 
         "📸 Capture Image",
 
-        use_container_width=True
-
     ):
 
         return
@@ -115,7 +113,7 @@ def show_live_camera():
 
         caption="Captured Frame",
 
-        use_container_width=True
+        use_column_width=True
 
     )
 
@@ -161,7 +159,7 @@ def show_live_camera():
 
         caption="Detected Roof Boundary",
 
-        use_container_width=True
+        use_column_width=True
 
     )
 

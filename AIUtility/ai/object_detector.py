@@ -15,7 +15,7 @@ from typing import List, Dict
 
 import cv2
 from ultralytics import YOLO
-
+import numpy as np
 
 # ---------------------------------------------------------
 
@@ -26,7 +26,7 @@ class ObjectDetectionResult:
 
     detections: List[Dict]
 
-    overlay: any
+    overlay: np.ndarray
 
     message: str
 
@@ -39,19 +39,20 @@ class ObjectDetector:
 
     # Only keep useful rooftop obstacles
     VALID_CLASSES = {
-
         "person",
         "car",
         "truck",
         "bus",
         "motorcycle",
         "bicycle",
-        "bench",
         "chair",
+        "bench",
         "potted plant",
         "tv",
+        "bird",
         "airplane",
-        "bird"
+        "boat"
+
     }
 
     def __init__(self):

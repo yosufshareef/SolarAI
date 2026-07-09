@@ -19,7 +19,7 @@ geopy
 folium
 geocoder
 leafmap
-pip install streamlit-image-coordinates
+streamlit-image-coordinates
 requests
 reportlab
 kaleido
