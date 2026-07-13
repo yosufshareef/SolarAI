@@ -1,306 +1,227 @@
-from duckdb import project
-import streamlit as st
-import pandas as pd
-import plotly.express as px
 import os
-from services.weather_service import WeatherService
-from services.solar_service import SolarService
+import base64
+import pandas as pd
+import streamlit as st
+import subprocess
+import sys
+
 from ai.ai_engine import AIEngine
 from services.pdf_service import PDFService
+from services.solar_service import SolarService
+from services.ai_report_service import AIReportService
+
+
+# ---------------------------------------------------------
+# PDF Preview
+# ---------------------------------------------------------
+
+def pdf_preview(pdf_path):
+
+    with open(pdf_path, "rb") as f:
+
+        base64_pdf = base64.b64encode(
+            f.read()
+        ).decode("utf-8")
+
+    pdf_display = f"""
+    <iframe
+        src="data:application/pdf;base64,{base64_pdf}"
+        width="100%"
+        height="900"
+        type="application/pdf">
+    </iframe>
+    """
+
+    st.markdown(
+        pdf_display,
+        unsafe_allow_html=True
+    )
+
+
+# ---------------------------------------------------------
+# Report Page
+# ---------------------------------------------------------
 
 def show_dashboard():
+    # -----------------------------------------
+    # Session State
+    # -----------------------------------------
 
-    st.title("📊 SolarTwin AI Dashboard")
+    if "show_pdf" not in st.session_state:
+        st.session_state.show_pdf = False
 
-    if "project" not in st.session_state:
-        st.warning("Create a project first.")
-        return
+    if "ai_report_result" not in st.session_state:
+        st.session_state.ai_report_result = None
 
-    project = st.session_state.project
+    ai_report = AIReportService()
 
-    if "blueprint" not in project:
-        st.warning("Generate Blueprint first.")
-        return
+    #st.title("📑 REPORT PREVIEW")
+    st.title("🤖 AI Enhanced Report")
 
-    location = project.get("location", {})
+    st.caption(
+        "Generate a professional client-ready report using Claude AI."
+    )
 
-    if not location:
-        st.warning("Search location first.")
-        return
+    preview_col, generate_col = st.columns(2)
 
-    location = project["location"]
-    blueprint = project["blueprint"]
-    roof = project.get("roof_info", {})
+    source_pdf = os.path.join(
+        "exports",
+        "SolarTwin_Report.pdf"
+    )
 
-    weather_service = WeatherService()
-    solar_service = SolarService()
-    ai = AIEngine()
+    ai_pdf = os.path.join(
+        "exports",
+        "SolarTwin_AIReport.pdf"
+    )
 
-    weather = project.get("weather")
+    with preview_col:
 
-    generation = project.get("generation")
+        if st.button(
+            "👁 Show Preview",
+            use_container_width=True
+        ):
 
-    roi = project.get("roi")
+            if not os.path.exists(source_pdf):
 
-    monthly = project.get("monthly_generation")
+                st.error("Generate Enterprise PDF first.")
 
-    if weather is None or generation is None or roi is None or monthly is None:
+            else:
 
-        with st.spinner("Fetching weather & solar data..."):
+                with st.spinner("Generating latest AI Report..."):
 
-            weather = weather_service.summary(
-                location["lat"],
-                location["lon"]
+                    try:
+
+                        # result = ai_report.generate(
+                        #     input_pdf=source_pdf,
+                        #     output_pdf=ai_pdf,
+                        #     tone="client"
+                        # )
+                        script_path = os.path.join(
+                            os.getcwd(),
+                            "rooftop_report_agent.py"
+                        )
+
+                        subprocess.run(
+                            [
+                                sys.executable,
+                                script_path,
+                                "--input",
+                                source_pdf,
+                                "--output",
+                                ai_pdf,
+                                "--tone",
+                                "client"
+                            ],
+                            check=True
+                        )
+
+                        st.success("AI Report Generated Successfully")
+                        st.session_state.ai_report_result = result
+                        st.session_state.show_pdf = True
+
+                    except Exception as e:
+
+                        st.error(str(e))
+
+    with generate_col:
+
+        if st.button(
+            "🚀 Generate AI Report",
+            use_container_width=True
+        ):
+
+            if not os.path.exists(source_pdf):
+
+                st.error("Generate Enterprise PDF first.")
+
+            else:
+
+                with st.spinner("Generating latest AI Report..."):
+
+                    try:
+                        result = ai_report.generate(
+                            input_pdf=source_pdf,
+                            output_pdf=ai_pdf,
+                            tone="client"
+                        )
+                        print(result)
+                        st.session_state.ai_report_result = result
+                        st.session_state.show_pdf = True
+
+                        with open(ai_pdf, "rb") as f:
+
+                            st.download_button(
+                                "⬇ Download AI Report",
+                                f,
+                                file_name="SolarTwin_AIReport.pdf",
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
+
+                    except Exception as e:
+
+                        st.error(str(e))
+    # =====================================================
+    # AI Report Preview
+    # =====================================================
+
+    st.divider()
+
+    if st.session_state.get("show_pdf", False):
+
+        if os.path.exists(ai_pdf):
+
+            st.subheader("📄 AI Report Preview")
+
+            pdf_preview(ai_pdf)
+
+        else:
+
+            st.warning(
+                "AI Report not found."
             )
 
-            generation = solar_service.annual_generation(
-                location["lat"],
-                location["lon"],
-                blueprint["capacity"]
-            )
-
-            monthly = solar_service.monthly_generation(
-                location["lat"],
-                location["lon"],
-                blueprint["capacity"]
-            )
-
-            roi = solar_service.roi(
-                generation["annual_energy"],
-                electricity_rate=8,
-                installation_cost=60000,
-                capacity_kw=blueprint["capacity"]
-            )
-
-        project["weather"] = weather
-        project["generation"] = generation
-        project["monthly_generation"] = monthly
-        project["roi"] = roi
-
-    st.subheader("Executive KPIs")
-
-    c1,c2,c3,c4 = st.columns(4)
-
-    c1.metric(
-        "Roof Area",
-        f'{roof.get("area_m2",0):.1f} m²'
-    )
-
-    c2.metric(
-        "Panels",
-        blueprint["count"]
-    )
-
-    c3.metric(
-        "Capacity",
-        f'{blueprint["capacity"]:.2f} kW'
-    )
-
-    c4.metric(
-        "Orientation",
-        blueprint["orientation"]
-    )
+    # =====================================================
+    # Download Section
+    # =====================================================
 
     st.divider()
 
-    c1,c2,c3,c4 = st.columns(4)
+    if os.path.exists(ai_pdf):
 
-    c1.metric(
-        "Annual Energy",
-        f'{generation["annual_energy"]:.0f} kWh'
-    )
+        st.subheader("Download")
 
-    c2.metric(
-        "Annual Saving",
-        f'₹{roi["annual_saving"]:,.0f}'
-    )
-
-    c3.metric(
-        "Payback",
-        f'{roi["payback"]:.1f} Years'
-    )
-
-    c4.metric(
-        "25 Yr Profit",
-        f'₹{roi["profit_25_year"]:,.0f}'
-    )
-
-    st.divider()
-
-    st.subheader("Current Weather")
-
-    w1,w2,w3,w4 = st.columns(4)
-
-    w1.metric(
-        "Temperature",
-        f'{weather["temperature"]}°C'
-    )
-
-    w2.metric(
-        "Cloud",
-        f'{weather["cloud"]}%'
-    )
-
-    w3.metric(
-        "Wind",
-        f'{weather["wind"]} km/h'
-    )
-
-    w4.metric(
-        "Humidity",
-        f'{weather["humidity"]}%'
-    )
-
-    st.divider()
-
-    st.subheader("Monthly Energy Generation")
-
-    if monthly:
-        df = pd.DataFrame(monthly)
-    else:
-        st.warning("Monthly generation data is unavailable.")
-        return
-    
-    fig = px.bar(
-
-        df,
-
-        x="month",
-
-        y="energy",
-
-        text="energy",
-
-        labels={
-
-            "month":"Month",
-
-            "energy":"kWh"
-
-        }
-
-    )
-
-    fig.update_layout(
-
-        height=450,
-
-        xaxis_title="",
-
-        yaxis_title="Energy (kWh)"
-
-    )
-
-    st.plotly_chart(
-        fig,
-        use_container_width=True
-    )
-
-    st.divider()
-
-    st.subheader("Monthly Solar Irradiance")
-
-    fig2 = px.line(
-
-        df,
-
-        x="month",
-
-        y="irradiance",
-
-        markers=True
-
-    )
-
-    fig2.update_layout(
-
-        height=420,
-
-        yaxis_title="kWh/m²"
-
-    )
-
-    st.plotly_chart(
-
-        fig2,
-
-        use_container_width=True
-
-    )
-
-    st.divider()
-
-    st.subheader("Sustainability")
-
-    s1,s2 = st.columns(2)
-
-    s1.metric(
-
-        "CO₂ Offset",
-
-        f'{solar_service.carbon_offset(generation["annual_energy"]):,.0f} kg/year'
-
-    )
-
-    s2.metric(
-
-        "Trees Equivalent",
-
-        solar_service.trees_equivalent(
-
-            generation["annual_energy"]
-
-        )
-
-    )
-
-    st.divider()
-
-    st.subheader("🤖 AI Recommendations")
-    recommendations = ai.recommendations(project)
-    project["recommendations"] = recommendations
-    for rec in ai.recommendations(project):
-        
-
-        st.success(rec)
-
-    st.divider()
-
-    summary = ai.executive_summary(project)
-    project["executive_summary"] = summary
-    st.download_button(
-
-        "⬇ Download Executive Summary",
-
-        summary,
-
-        file_name="ExecutiveSummary.txt",
-
-        mime="text/plain"
-
-    )
-    st.divider()
-
-    if st.button("📄 Generate Enterprise PDF Report"):
-
-        os.makedirs("exports", exist_ok=True)
-
-        pdf_path = "exports/SolarTwin_Report.pdf"
-
-        pdf = PDFService()
-
-        pdf.generate(project, pdf_path)
-
-        with open(pdf_path, "rb") as f:
+        with open(ai_pdf, "rb") as pdf_file:
 
             st.download_button(
 
-                "⬇ Download PDF",
+                "⬇ Download Latest AI Report",
 
-                f,
+                pdf_file,
 
-                file_name="SolarTwin_Report.pdf",
+                file_name="SolarTwin_AIReport.pdf",
 
-                mime="application/pdf"
+                mime="application/pdf",
+
+                use_container_width=True
 
             )
+
+    # =====================================================
+    # Status
+    # =====================================================
+
+    st.divider()
+
+    if os.path.exists(ai_pdf):
+
+        st.success(
+            "✅ Latest AI Report is available."
+        )
+
+    else:
+
+        st.info(
+            "Generate an AI Report to preview and download."
+        )
+    

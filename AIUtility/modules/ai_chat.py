@@ -1,192 +1,241 @@
 import streamlit as st
-
+import os
 from ai.ai_engine import AIEngine
-
+from streamlit_mic_recorder import speech_to_text
 
 def show_ai_chat():
 
-    st.title("🤖 Solar AI Engineer")
+    st.title("🤖 AI Engineer")
 
-    if "project" not in st.session_state:
-
-        st.warning("No active project.")
-
-        return
-
-    project = st.session_state.project
+    st.caption(
+        "Powered by Claude AI"
+    )
 
     ai = AIEngine()
 
-    if "chat_history" not in st.session_state:
-
-        st.session_state.chat_history = []
-
-    st.info(
-        "Ask anything about your solar project."
+    pdf_path = os.path.join(
+        "exports",
+        "SolarTwin_Report.pdf"
     )
 
-    suggestions = [
+    if os.path.exists(pdf_path):
+        ai.load_report(pdf_path)
+    else:
+        st.warning(
+            "⚠ Generate the Enterprise PDF Report first."
+        )
 
-        "How many solar panels fit on my roof?",
+    if "messages" not in st.session_state:
 
-        "What is the estimated solar capacity?",
+        st.session_state.messages = [
 
-        "Why was this panel orientation selected?",
+            {
 
-        "What is the expected annual energy generation?",
+                "role":"assistant",
 
-        "What is the estimated ROI?",
+                "content":
+                "Hello 👋\n\n"
+                "I have loaded your generated SolarTwin Report.\n\n"
+                "Ask me anything about your project."
 
-        "How much money will I save each year?",
+            }
 
-        "Can I increase the number of panels?",
+        ]
 
-        "How do rooftop obstacles affect the design?",
+    left,right = st.columns([3,1])
 
-        "What are your recommendations?",
+    with left:
 
-        "Give me the executive project summary."
+        if os.path.exists(pdf_path):
 
-    ]
-
-    selected = st.selectbox(
-
-        "Quick Questions",
-
-        [""] + suggestions
-
-    )
-
-    question = st.text_input(
-
-        "Ask Solar AI",
-
-        value=selected
-
-    )
-
-    if st.button("Ask AI"):
-
-        if question.strip() == "":
-
-            st.warning("Enter a question.")
+            st.success("📄 SolarTwin_Report.pdf Loaded")
 
         else:
 
-            answer = ai.answer(
+            st.error("❌ Report not found")
 
-                question,
+    with right:
 
-                project
+        if st.button("🗑 Clear Chat"):
 
-            )
-
-            st.session_state.chat_history.append(
+            st.session_state.messages=[
 
                 {
 
-                    "question": question,
+                    "role":"assistant",
 
-                    "answer": answer
+                    "content":
+                    "Chat cleared. Ask me anything."
 
                 }
+
+            ]
+
+            st.rerun()
+        # --------------------------------------------------
+    # Conversation
+    # --------------------------------------------------
+
+    st.divider()
+
+    for message in st.session_state.messages:
+
+        with st.chat_message(message["role"]):
+
+            st.markdown(
+
+                message["content"]
 
             )
 
     st.divider()
 
-    for chat in reversed(
+    col1, col2 = st.columns([8,0.5])
 
-        st.session_state.chat_history
+    with col1:
 
-    ):
+        question = st.chat_input(
+            "Ask anything about your SolarTwin project...",
+            key="solar_chat_input"
+        )
+
+    with col2:
+
+        voice_text = speech_to_text(
+
+            start_prompt="🎙️",
+
+            stop_prompt="⏹ Stop",
+
+            language="en",
+
+            just_once=True,
+
+            use_container_width=True,
+
+            key="voice_input"
+
+        )
+        '''
+        st.write("Voice Text :", voice_text)
+        if voice_text is not None and voice_text.strip():
+
+            question = voice_text
+        '''
+        # --------------------------------------------------
+    # Ask Claude
+    # --------------------------------------------------
+
+    if question:
+
+        # Show user message immediately
+        st.session_state.messages.append(
+
+            {
+
+                "role": "user",
+
+                "content": question
+
+            }
+
+        )
 
         with st.chat_message("user"):
 
-            st.write(chat["question"])
+            st.markdown(question)
 
+        # Claude response
         with st.chat_message("assistant"):
 
-            st.write(chat["answer"])
+            with st.spinner("🧠 AI Engineer is analyzing your SolarTwin Report..."):
 
-    st.divider()
+                try:
 
-    st.subheader("📋 AI Project Insights")
+                    answer = ai.ask_pdf(question)
 
-    try:
+                except Exception as e:
 
-        summary = project.get("ai_summary")
+                    answer = (
 
-        if summary is None:
+                        "❌ Unable to contact Claude API.\n\n"
 
-            summary = ai.generate_summary(project)
+                        f"{e}"
 
-            project["ai_summary"] = summary
+                    )
 
-        c1, c2 = st.columns(2)
+                st.markdown(answer)
 
-        c1.metric(
+        # Save assistant response
 
-            "Capacity",
+        st.session_state.messages.append(
 
-            f'{summary["capacity"]:.2f} kW'
+            {
 
-        )
+                "role": "assistant",
 
-        c2.metric(
+                "content": answer
 
-            "Panels",
-
-            summary["panels"]
+            }
 
         )
 
-        st.success(
-
-            f"Roof Area : {summary['roof_area']:.2f} m²"
-
-        )
-
-        st.success(
-
-            f"Orientation : {summary['orientation']}"
-
-        )
-
-        st.success(
-
-            f"Location : {summary['location']}"
-
-        )
-
-    except Exception as e:
-
-        st.warning(
-
-            f"Unable to display AI insights: {e}"
-
-        )
-
-    st.divider()
-
-    st.subheader("⚡ AI Suggestions")
-
-    recommendations = project.get("recommendations")
-
-    if recommendations is None:
-
-        recommendations = ai.recommendations(project)
-
-        project["recommendations"] = recommendations
-
-    for tip in recommendations:
-
-        st.success(tip)
-
-    st.divider()
-
-    if st.button("Clear Chat"):
-
-        st.session_state.chat_history = []
+        # Refresh chat
 
         st.rerun()
+
+            # --------------------------------------------------
+    # Enterprise Information Panel
+    # --------------------------------------------------
+
+    st.divider()
+
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+
+        st.info(
+            "🤖 Claude Sonnet 5"
+        )
+
+    with c2:
+
+        st.success(
+            "📄 Report Loaded"
+        )
+
+    with c3:
+
+        st.info(
+            "💬 Chat Mode"
+        )
+
+    with st.expander("ℹ AI Engineer"):
+
+        st.markdown("""
+
+### SolarTwin AI Engineer
+
+This assistant automatically analyzes the generated **SolarTwin Report** and answers questions using Claude AI.
+
+**Knowledge Source**
+
+- Generated Enterprise PDF Report
+- Solar Engineering Knowledge
+- Rooftop Design Recommendations
+
+**You can ask:**
+
+- Explain my report
+- Annual generation
+- ROI
+- Panel count
+- Orientation
+- Roof utilization
+- CO₂ savings
+- Payback period
+- Executive summary
+- Improvement suggestions
+- General solar questions
+
+""")

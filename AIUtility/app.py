@@ -338,8 +338,8 @@ with st.sidebar:
             "Polygon Editor",
             "Blueprint",
             "Dashboard",
-            "AI Engineer",
             "Report",
+            "AI Engineer",
         ],
         icons=[
             "house",
@@ -350,8 +350,8 @@ with st.sidebar:
             "bounding-box",
             "grid-3x3-gap",
             "bar-chart",
-            "robot",
             "file-earmark-text",
+            "robot",
         ],
         default_index=0,
         styles=MENU_STYLES,
@@ -378,11 +378,11 @@ PAGES = {
 
     "Blueprint": show_blueprint,
 
-    "Dashboard": show_dashboard,
+    "Dashboard": show_report,
 
     "AI Engineer": show_ai_chat,
 
-    "Report": show_report,
+    "Report": show_dashboard,
 
 }
 

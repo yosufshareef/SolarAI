@@ -1,0 +1,17 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+anthropic>=0.34
+pydantic>=2.6
+python-multipart>=0.0.9
+
+# optional: only needed for /voice-chat and voice_utils.py
+SpeechRecognition>=3.10
+pydub>=0.25
+gTTS>=2.5
+pypdf
+
+#Voice - for streamlit
+streamlit-mic-recorder
+
+#Report
+pdfplumber

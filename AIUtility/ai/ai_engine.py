@@ -1,694 +1,408 @@
 from datetime import datetime
+import os
+import glob
+from anthropic import Anthropic
+from pypdf import PdfReader
 
+
+MODEL = "claude-sonnet-5"
+
+SUPPORTED_EXTS = (
+    ".txt",
+    ".md",
+    ".csv",
+    ".pdf"
+)
+
+GENERAL_SYSTEM_PROMPT = """
+You are SolarTwin AI Engineer.
+
+You are an enterprise solar engineering assistant.
+
+Answer using the uploaded SolarTwin report whenever possible.
+
+If the report does not contain the answer,
+answer using your solar engineering knowledge.
+
+Keep answers concise,
+professional,
+and suitable for rooftop solar planning.
+"""
+
+REPORT_SYSTEM_TEMPLATE = """
+You are SolarTwin AI Engineer.
+
+Always answer using the report excerpts below.
+
+If the answer is present,
+cite the report.
+
+If not present,
+answer using general rooftop solar engineering knowledge.
+
+Report:
+
+{context}
+"""
 
 class AIEngine:
-
+        # --------------------------------------------------
+    # Claude Initialization
     # --------------------------------------------------
 
-    def generate_summary(self, project):
+    def __init__(self):
 
-        roof = project.get("roof_info", {})
+        self.client = Anthropic(
 
-        blueprint = project.get("blueprint", {})
+            api_key="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"
 
-        location = project.get("location", {})
+        )
 
-        roi = project.get("roi", {})
+        self.report_index = []
 
-        generation = project.get("generation", {})
+            # --------------------------------------------------
+    # PDF Reader
+    # --------------------------------------------------
 
-        return {
+    def extract_text(
 
-            "location":
+        self,
 
-                location.get(
+        path
 
-                    "address",
+    ):
 
-                    "Unknown"
+        ext = os.path.splitext(path)[1].lower()
 
-                ),
+        try:
 
-            "roof_area":
+            if ext == ".pdf":
 
-                roof.get(
+                reader = PdfReader(path)
 
-                    "area_m2",
+                return "\n".join(
 
-                    0
+                    (page.extract_text() or "")
 
-                ),
-
-            "capacity":
-
-                blueprint.get(
-
-                    "capacity",
-
-                    0
-
-                ),
-
-            "panels":
-
-                blueprint.get(
-
-                    "count",
-
-                    0
-
-                ),
-
-            "orientation":
-
-                blueprint.get(
-
-                    "orientation",
-
-                    "Unknown"
-
-                ),
-
-            "annual_energy":
-
-                generation.get(
-
-                    "annual_energy",
-
-                    0
-
-                ),
-
-            "annual_saving":
-
-                roi.get(
-
-                    "annual_saving",
-
-                    0
-
-                ),
-
-            "payback":
-
-                roi.get(
-
-                    "payback",
-
-                    0
+                    for page in reader.pages
 
                 )
 
-        }
+            with open(
 
+                path,
+
+                "r",
+
+                encoding="utf-8",
+
+                errors="ignore"
+
+            ) as f:
+
+                return f.read()
+
+        except Exception:
+
+            return ""
+        # --------------------------------------------------
+    # Chunking
+    # --------------------------------------------------
+
+    def chunk_text(
+
+        self,
+
+        text,
+
+        size=1200,
+
+        overlap=150
+
+    ):
+
+        chunks = []
+
+        start = 0
+
+        n = len(text)
+
+        while start < n:
+
+            end = start + size
+
+            chunk = text[start:end].strip()
+
+            if chunk:
+
+                chunks.append(chunk)
+
+            start = end - overlap
+
+        return chunks
+        # --------------------------------------------------
+    # Load Solar Report
+    # --------------------------------------------------
+
+    def load_report(
+
+        self,
+
+        report_path="exports/SolarTwin_Report.pdf"
+
+    ):
+
+        self.report_index = []
+
+        if not os.path.exists(report_path):
+
+            return
+
+        text = self.extract_text(report_path)
+
+        if not text:
+
+            return
+
+        for chunk in self.chunk_text(text):
+
+            self.report_index.append(
+
+                (
+
+                    os.path.basename(report_path),
+
+                    chunk
+
+                )
+
+            )
+        # --------------------------------------------------
+    # Score Chunks
+    # --------------------------------------------------
+
+    def score_chunk(
+
+        self,
+
+        query_words,
+
+        chunk_text
+
+    ):
+
+        text = chunk_text.lower()
+
+        return sum(
+
+            1
+
+            for word in query_words
+
+            if word in text
+
+        )
+        # --------------------------------------------------
+    # Top Matching Chunks
+    # --------------------------------------------------
+
+    def top_chunks(
+
+        self,
+
+        query,
+
+        k=4
+
+    ):
+
+        words = [
+
+            w
+
+            for w in query.lower().split()
+
+            if len(w) > 2
+
+        ]
+
+        scored = []
+
+        for filename, chunk in self.report_index:
+
+            score = self.score_chunk(
+
+                words,
+
+                chunk
+
+            )
+
+            scored.append(
+
+                (
+
+                    score,
+
+                    filename,
+
+                    chunk
+
+                )
+
+            )
+
+        scored.sort(
+
+            key=lambda x: x[0],
+
+            reverse=True
+
+        )
+
+        top = [
+
+            x
+
+            for x in scored
+
+            if x[0] > 0
+
+        ][:k]
+
+        if not top:
+
+            top = scored[:k]
+
+        return top
+        # --------------------------------------------------
+    # Build Claude Context
+    # --------------------------------------------------
+
+    def build_prompt(
+
+        self,
+
+        question
+
+    ):
+
+        chunks = self.top_chunks(question)
+
+        context = "\n\n".join(
+
+            f"[{fname}]\n{chunk}"
+
+            for _, fname, chunk in chunks
+
+        )
+
+        return REPORT_SYSTEM_TEMPLATE.format(
+
+            context=context
+
+        )
+        # --------------------------------------------------
+    # Claude Chat
+    # --------------------------------------------------
+
+    def ask_pdf(
+
+        self,
+
+        question
+
+    ):
+
+        if not self.report_index:
+
+            self.load_report()
+
+        system_prompt = self.build_prompt(
+
+            question
+
+        )
+
+        response = self.client.messages.create(
+
+            model=MODEL,
+
+            max_tokens=700,
+
+            system=system_prompt,
+
+            messages=[
+
+                {
+
+                    "role":"user",
+
+                    "content":question
+
+                }
+
+            ]
+
+        )
+
+        return "".join(
+
+            block.text
+
+            for block in response.content
+
+            if block.type == "text"
+
+        )
+
+    # --------------------------------------------------
+    # AI Recommendations
     # --------------------------------------------------
 
     def recommendations(self, project):
 
-        cached = project.get(
-
-            "recommendations"
-
-        )
-
-        if cached:
-
-            return cached
-
-        roof = project.get(
-
-            "roof_info",
-
-            {}
-
-        )
-
-        blueprint = project.get(
-
-            "blueprint",
-
-            {}
-
-        )
-
-        weather = project.get(
-
-            "weather",
-
-            {}
-
-        )
-
-        obstacles = project.get(
-
-            "obstacles",
-
-            []
-
-        )
-
-        tips = []
-
-        area = roof.get(
-
-            "area_m2",
-
-            0
-
-        )
-
-        capacity = blueprint.get(
-
-            "capacity",
-
-            0
-
-        )
-
-        utilization = blueprint.get(
-
-            "utilization",
-
-            0
-
-        )
-
-        orientation = blueprint.get(
-
-            "orientation",
-
-            "Unknown"
-
-        )
-
-        cloud = weather.get(
-
-            "cloud",
-
-            0
-
-        )
-
-        # ----------------------------------------
-
-        if area < 20:
-
-            tips.append(
-
-                "Small rooftop detected. Residential installation is recommended."
-
-            )
-
-        elif area < 150:
-
-            tips.append(
-
-                "Roof size is suitable for residential or commercial deployment."
-
-            )
-
-        else:
-
-            tips.append(
-
-                "Large rooftop detected. Industrial-scale installation is feasible."
-
-            )
-
-        # ----------------------------------------
-
-        if orientation == "Landscape":
-
-            tips.append(
-
-                "Landscape layout maximizes available installation area."
-
-            )
-
-        else:
-
-            tips.append(
-
-                "Portrait layout provides the best packing efficiency."
-
-            )
-
-        # ----------------------------------------
-
-        if utilization < 70:
-
-            tips.append(
-
-                "Additional roof optimization may increase installed capacity."
-
-            )
-
-        elif utilization > 90:
-
-            tips.append(
-
-                "Excellent roof utilization achieved."
-
-            )
-
-        # ----------------------------------------
-
-        if len(obstacles):
-
-            tips.append(
-
-                f"{len(obstacles)} rooftop obstacle(s) detected."
-
-            )
-
-            tips.append(
-
-                "Relocating obstacles could increase solar capacity."
-
-            )
-
-        # ----------------------------------------
-
-        if cloud > 60:
-
-            tips.append(
-
-                "Frequent cloud cover may reduce annual generation."
-
-            )
-
-        elif cloud < 30:
-
-            tips.append(
-
-                "Weather conditions are highly favorable for solar production."
-
-            )
-
-        # ----------------------------------------
-
-        if capacity < 5:
-
-            tips.append(
-
-                "Suitable for residential self-consumption."
-
-            )
-
-        elif capacity < 25:
-
-            tips.append(
-
-                "Suitable for commercial buildings."
-
-            )
-
-        else:
-
-            tips.append(
-
-                "Large-capacity solar installation identified."
-
-            )
-
-        tips.append(
-
-            "Clean solar panels every 2–3 months for optimal efficiency."
-
-        )
-
-        tips.append(
-
-            "Perform annual electrical and structural inspections."
-
-        )
-
-        project["recommendations"] = tips
-
-        return tips
-
-    # --------------------------------------------------
-
-    def estimate_generation(
-
-        self,
-
-        capacity
-
-    ):
-
-        return round(
-
-            capacity * 1500,
-
-            2
-
-        )
-
-    # --------------------------------------------------
-
-    def estimate_co2(
-
-        self,
-
-        annual_energy
-
-    ):
-
-        return round(
-
-            annual_energy * 0.82,
-
-            2
-
-        )
-
-    # --------------------------------------------------
-
-    def estimate_trees(
-
-        self,
-
-        annual_energy
-
-    ):
-
-        return int(
-
-            annual_energy / 21
-
-        )
-        # --------------------------------------------------
-
-    def answer(
-
-        self,
-
-        question,
-
-        project
-
-    ):
-
-        q = question.lower().strip()
-
-        roof = project.get("roof_info", {})
-
         blueprint = project.get("blueprint", {})
-
+        roof = project.get("roof_info", {})
         roi = project.get("roi", {})
 
-        generation = project.get("generation", {})
-
-        weather = project.get("weather", {})
-
-        location = project.get("location", {})
+        rec = []
 
         area = roof.get("area_m2", 0)
 
-        capacity = blueprint.get("capacity", 0)
+        if area < 40:
+            rec.append("Roof area is limited. Consider high-efficiency solar panels.")
 
-        panels = blueprint.get("count", 0)
+        if blueprint.get("orientation") != "South":
+            rec.append("South-facing panels generally maximize solar generation.")
 
-        orientation = blueprint.get("orientation", "Unknown")
+        if roi.get("payback", 100) > 7:
+            rec.append("Consider subsidies or reducing installation cost to improve ROI.")
 
-        utilization = blueprint.get("utilization", 0)
+        if not rec:
+            rec.append("Current design is well optimized.")
 
-        if any(word in q for word in ["capacity", "kw", "plant size"]):
-
-            return (
-
-                f"The estimated solar plant capacity is "
-
-                f"{capacity:.2f} kW."
-
-            )
-
-        if any(word in q for word in ["panel", "panels"]):
-
-            return (
-
-                f"The optimized layout contains "
-
-                f"{panels} solar panels."
-
-            )
-
-        if any(word in q for word in ["roof", "area"]):
-
-            return (
-
-                f"The usable rooftop area is "
-
-                f"{area:.2f} m²."
-
-            )
-
-        if "orientation" in q:
-
-            return (
-
-                f"The selected panel orientation is "
-
-                f"{orientation}."
-
-            )
-
-        if "utilization" in q:
-
-            return (
-
-                f"The roof utilization is "
-
-                f"{utilization:.1f}%."
-
-            )
-
-        if any(word in q for word in ["roi", "payback"]):
-
-            return (
-
-                f"The estimated payback period is "
-
-                f"{roi.get('payback',0):.1f} years."
-
-            )
-
-        if any(word in q for word in ["saving", "savings"]):
-
-            return (
-
-                f"Estimated annual savings are "
-
-                f"₹{roi.get('annual_saving',0):,.0f}."
-
-            )
-
-        if any(word in q for word in ["generation", "energy", "electricity"]):
-
-            return (
-
-                f"Expected annual energy generation is "
-
-                f"{generation.get('annual_energy',0):,.0f} kWh."
-
-            )
-
-        if "weather" in q:
-
-            return (
-
-                f"Current weather: "
-
-                f"{weather.get('temperature',0)}°C, "
-
-                f"{weather.get('cloud',0)}% cloud cover, "
-
-                f"{weather.get('wind',0)} km/h wind."
-
-            )
-
-        if "location" in q:
-
-            return (
-
-                f"Project location: "
-
-                f"{location.get('address','Unknown')}."
-
-            )
-
-        if "obstacle" in q:
-
-            obstacles = project.get("obstacles", [])
-
-            return (
-
-                f"{len(obstacles)} obstacle(s) detected. "
-
-                "Removing or relocating them may increase "
-
-                "solar capacity."
-
-            )
-
-        if any(word in q for word in ["recommend", "recommendation", "advice"]):
-
-            return "\n".join(
-
-                self.recommendations(project)
-
-            )
-
-        if any(word in q for word in ["summary", "project"]):
-
-            return self.executive_summary(project)
-
-        return (
-
-            "I can answer questions about:\n\n"
-
-            "• Roof area\n"
-
-            "• Solar capacity\n"
-
-            "• Panel count\n"
-
-            "• Orientation\n"
-
-            "• Roof utilization\n"
-
-            "• Annual generation\n"
-
-            "• Annual savings\n"
-
-            "• ROI & payback\n"
-
-            "• Weather\n"
-
-            "• Project location\n"
-
-            "• Recommendations"
-
-        )
+        return rec
 
     # --------------------------------------------------
-
-    def executive_summary(
-
-        self,
-
-        project
-
-    ):
-
-        cached = project.get(
-
-            "executive_summary"
-
-        )
-
-        if cached:
-
-            return cached
-
-        summary = self.generate_summary(
-
-            project
-
-        )
-
-        text = f"""
-SolarTwin AI Executive Summary
-
-Location:
-{summary['location']}
-
-Roof Area:
-{summary['roof_area']:.2f} m²
-
-Installed Capacity:
-{summary['capacity']:.2f} kW
-
-Solar Panels:
-{summary['panels']}
-
-Panel Orientation:
-{summary['orientation']}
-
-Estimated Annual Generation:
-{summary['annual_energy']:.0f} kWh
-
-Estimated Annual Saving:
-₹{summary['annual_saving']:,.0f}
-
-Estimated Payback:
-{summary['payback']:.1f} Years
-
-Generated:
-{datetime.now().strftime('%d-%m-%Y %H:%M')}
-"""
-
-        project["executive_summary"] = text
-
-        return text
-
+    # Executive Summary
     # --------------------------------------------------
 
-    def estimate_roi(
+    def executive_summary(self, project):
 
-        self,
+        roof = project.get("roof_info", {})
+        blueprint = project.get("blueprint", {})
+        generation = project.get("generation", {})
+        roi = project.get("roi", {})
 
-        capacity,
-
-        tariff=8,
-
-        installation_cost=60000
-
-    ):
-
-        annual = self.estimate_generation(
-
-            capacity
-
-        )
-
-        saving = annual * tariff
-
-        total_cost = capacity * installation_cost
-
-        payback = (
-
-            total_cost / saving
-
-            if saving
-
-            else 0
-
-        )
-
-        return {
-
-            "annual_generation":
-
-                annual,
-
-            "annual_saving":
-
-                saving,
-
-            "installation_cost":
-
-                total_cost,
-
-            "payback":
-
-                round(
-
-                    payback,
-
-                    1
-
-                )
-
-        }
+        return f"""
+            SolarTwin AI Executive Summary
+            Roof Area : {roof.get('area_m2',0):.1f} m²
+            Panels : {blueprint.get('count',0)}
+            Installed Capacity : {blueprint.get('capacity',0):.2f} kW
+            Annual Energy : {generation.get('annual_energy',0):,.0f} kWh
+            Annual Saving : ₹{roi.get('annual_saving',0):,.0f}
+            Payback Period : {roi.get('payback',0):.1f} years
+            25-Year Profit : ₹{roi.get('profit_25_year',0):,.0f}
+            Generated by SolarTwin AI Enterprise.
+            """
