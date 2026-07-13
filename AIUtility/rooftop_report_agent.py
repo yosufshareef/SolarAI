@@ -558,7 +558,7 @@ def main():
     # if not os.environ.get("ANTHROPIC_API_KEY"):
     #     sys.exit("ERROR: set the ANTHROPIC_API_KEY environment variable before running this script.")
 
-    ANTHROPIC_API_KEY = "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"
+    ANTHROPIC_API_KEY = ""
     
     input_path = Path(args.input)
     if not input_path.exists():

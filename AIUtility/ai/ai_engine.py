@@ -54,7 +54,7 @@ class AIEngine:
 
         self.client = Anthropic(
 
-            api_key="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"
+            api_key=""
 
         )
 
